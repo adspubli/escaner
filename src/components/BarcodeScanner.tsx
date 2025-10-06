@@ -18,6 +18,8 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState<boolean>(false);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const lastCodesRef = useRef<{ value: string; time: number }[]>([]);
+  const DUP_WINDOW_MS = 3000; // ventana de supresión de duplicados
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isInitializedRef = useRef(false);
 
@@ -94,9 +96,17 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         cameraConfig,
         config,
         (decodedText) => {
-          // Vibrar (si soportado) al detectar
+          const now = Date.now();
+          // Limpiar viejos
+          lastCodesRef.current = lastCodesRef.current.filter((c) => now - c.time < DUP_WINDOW_MS);
+          const isDuplicate = lastCodesRef.current.some((c) => c.value === decodedText);
+          if (isDuplicate && continuous) {
+            return; // ignorar duplicado en escaneo continuo
+          }
+          lastCodesRef.current.push({ value: decodedText, time: now });
+
           if (navigator.vibrate) {
-            navigator.vibrate(60);
+            navigator.vibrate(isDuplicate ? 20 : 60);
           }
           onScan(decodedText);
           if (!continuous) {

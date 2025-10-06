@@ -25,6 +25,10 @@ Cuando el dispositivo y el navegador lo permiten:
 * Vibración corta (60ms) al detectar un código (si `navigator.vibrate` está disponible).
 * La linterna se apaga automáticamente al detener el escaneo.
 
+### Filtro de duplicados
+
+En modo de escaneo continuo se ignoran códigos repetidos escaneados dentro de una ventana de 3 segundos para evitar múltiples inserciones accidentales del mismo producto. La vibración es más corta (20ms) si el código se considera duplicado.
+
 ### Formatos soportados
 Se activaron formatos comunes:
 * EAN_13 / EAN_8
