@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
-import { Camera, CameraOff, Keyboard } from 'lucide-react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats, type CameraDevice } from 'html5-qrcode';
+import { Camera, CameraOff, Keyboard, Flashlight, FlashlightOff } from 'lucide-react';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
@@ -9,9 +9,30 @@ interface BarcodeScannerProps {
 export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string>('');
+  const [warning, setWarning] = useState<string>('');
   const [manualBarcode, setManualBarcode] = useState('');
+  const [cameras, setCameras] = useState<CameraDevice[]>([]);
+  const [loadingCameras, setLoadingCameras] = useState(false);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
+  const [continuous, setContinuous] = useState<boolean>(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [torchSupported, setTorchSupported] = useState<boolean>(false);
+  const videoTrackRef = useRef<MediaStreamTrack | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const isInitializedRef = useRef(false);
+
+  // Check HTTPS requirement for iOS/Safari
+  useEffect(() => {
+    if (
+      typeof window !== 'undefined' &&
+      window.location.protocol !== 'https:' &&
+      window.location.hostname !== 'localhost'
+    ) {
+      setWarning(
+        'Para que la cámara funcione en móviles (especialmente iOS) abre esta página con HTTPS (ej. usando un deploy en Vercel / Netlify) o en localhost.'
+      );
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -19,6 +40,27 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         scannerRef.current.stop().catch(console.error);
       }
     };
+  }, []);
+
+  const fetchCameras = async () => {
+    try {
+      setLoadingCameras(true);
+      const devices = await Html5Qrcode.getCameras();
+      setCameras(devices);
+      // Try to prefer environment (trasera)
+      const preferred = devices.find((d) => /back|rear|environment/i.test(d.label)) || devices[0];
+      if (preferred) setSelectedCameraId(preferred.id);
+    } catch (err) {
+      setError('No se pudieron obtener las cámaras. Acepta permisos y recarga.');
+      console.error(err);
+    } finally {
+      setLoadingCameras(false);
+    }
+  };
+
+  useEffect(() => {
+    // Pre-list devices cuando el usuario llega al componente
+    fetchCameras();
   }, []);
 
   const startScanning = async () => {
@@ -30,23 +72,66 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       }
 
       const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-        aspectRatio: 1.0,
-      };
+        fps: 12,
+        qrbox: { width: 280, height: 180 }, // algo más rectangular para códigos de barras
+        aspectRatio: 1.7778, // 16:9
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+        ],
+      } as const;
+
+      // Prefer explicit camera id if available, else fallback to facingMode
+      const cameraConfig = selectedCameraId
+        ? { deviceId: { exact: selectedCameraId } }
+        : { facingMode: 'environment' as const };
 
       await scannerRef.current.start(
-        { facingMode: 'environment' },
+        cameraConfig,
         config,
         (decodedText) => {
+          // Vibrar (si soportado) al detectar
+          if (navigator.vibrate) {
+            navigator.vibrate(60);
+          }
           onScan(decodedText);
-          stopScanning();
+          if (!continuous) {
+            stopScanning();
+          }
         },
-        undefined
+        (scanError) => {
+          if (process.env.NODE_ENV === 'development') {
+            // eslint-disable-next-line no-console
+            console.debug('Frame no válido', scanError);
+          }
+        }
       );
 
       isInitializedRef.current = true;
       setIsScanning(true);
+
+      // Intentar detectar soporte de linterna
+      try {
+        const videoElem = document.querySelector('#barcode-reader video') as HTMLVideoElement | null;
+        if (videoElem) {
+          const stream = (videoElem as any).srcObject as MediaStream | undefined;
+          const track = stream?.getVideoTracks()[0];
+          if (track) {
+            videoTrackRef.current = track;
+            const capabilities = (track.getCapabilities && track.getCapabilities()) || {};
+            if ((capabilities as any).torch) {
+              setTorchSupported(true);
+            }
+          }
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.debug('No se pudo evaluar soporte de torch', err);
+      }
     } catch (err) {
       setError('Error al acceder a la cámara. Asegúrate de dar permisos.');
       console.error(err);
@@ -59,6 +144,7 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         await scannerRef.current.stop();
         isInitializedRef.current = false;
         setIsScanning(false);
+        setTorchOn(false);
       } catch (err) {
         console.error(err);
       }
@@ -70,6 +156,18 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
     if (manualBarcode.trim()) {
       onScan(manualBarcode.trim());
       setManualBarcode('');
+    }
+  };
+
+  const toggleTorch = async () => {
+    if (!videoTrackRef.current) return;
+    try {
+      // @ts-expect-error Algunos navegadores no tipan applyConstraints con torch
+      await videoTrackRef.current.applyConstraints({ advanced: [{ torch: !torchOn }] });
+      setTorchOn((prev) => !prev);
+    } catch (err) {
+      setError('No se pudo cambiar el estado de la linterna.');
+      console.error(err);
     }
   };
 
@@ -88,6 +186,51 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
             <p className="text-red-700 text-base font-medium">{error}</p>
           </div>
         )}
+
+        {warning && !error && (
+          <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-lg">
+            <p className="text-yellow-800 text-base font-medium">{warning}</p>
+          </div>
+        )}
+
+        <div className="mb-6 grid gap-4 md:grid-cols-2">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-600">Cámara</label>
+            <div className="flex gap-2">
+              <select
+                className="flex-1 border-2 border-gray-300 rounded-lg px-3 py-2 text-sm"
+                value={selectedCameraId}
+                onChange={(e) => setSelectedCameraId(e.target.value)}
+                disabled={isScanning || loadingCameras || cameras.length === 0}
+              >
+                {cameras.length === 0 && <option value="">{loadingCameras ? 'Cargando...' : 'Sin cámaras'}</option>}
+                {cameras.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label || `Cámara ${c.id}`}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={fetchCameras}
+                disabled={isScanning || loadingCameras}
+                className="px-3 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg font-medium disabled:opacity-50"
+              >
+                {loadingCameras ? '...' : '🔄'}
+              </button>
+            </div>
+          </div>
+          <label className="flex items-center gap-3 mt-6 md:mt-0">
+            <input
+              type="checkbox"
+              className="w-5 h-5"
+              checked={continuous}
+              onChange={(e) => setContinuous(e.target.checked)}
+              disabled={isScanning}
+            />
+            <span className="text-sm font-medium text-gray-700">Escaneo continuo (no se detiene)</span>
+          </label>
+        </div>
 
         <button
           onClick={isScanning ? stopScanning : startScanning}
@@ -109,6 +252,19 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
             </>
           )}
         </button>
+
+        {isScanning && torchSupported && (
+          <button
+            type="button"
+            onClick={toggleTorch}
+            className={`w-full flex items-center justify-center gap-3 px-6 py-4 rounded-lg text-lg font-semibold transition-colors mb-8 shadow-md ${
+              torchOn ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
+            }`}
+          >
+            {torchOn ? <FlashlightOff size={26} /> : <Flashlight size={26} />}
+            {torchOn ? 'Apagar Linterna' : 'Encender Linterna'}
+          </button>
+        )}
 
         <div className="relative mb-8">
           <div className="absolute inset-0 flex items-center">
