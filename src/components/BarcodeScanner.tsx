@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats, type CameraDevice } from 'html5-qrcode';
-import { Camera, CameraOff, Keyboard, Flashlight, FlashlightOff } from 'lucide-react';
+import { Camera, CameraOff, Keyboard } from 'lucide-react';
 
 interface BarcodeScannerProps {
   onScan: (barcode: string) => void;
@@ -17,6 +17,7 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
   const [continuous, setContinuous] = useState<boolean>(false);
   const [torchOn, setTorchOn] = useState(false);
   const [torchSupported, setTorchSupported] = useState<boolean>(false);
+  const [showModal, setShowModal] = useState(false);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
   const lastCodesRef = useRef<{ value: string; time: number }[]>([]);
   const DUP_WINDOW_MS = 3000; // ventana de supresión de duplicados
@@ -70,7 +71,10 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       setError('');
 
       if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode('barcode-reader');
+        scannerRef.current = new Html5Qrcode('barcode-reader', {
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          verbose: false,
+        });
       }
 
       const config = {
@@ -122,7 +126,19 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
       );
 
       isInitializedRef.current = true;
-      setIsScanning(true);
+  setIsScanning(true);
+  setShowModal(true);
+
+      // Timeout si el video no aparece en 4s
+      setTimeout(() => {
+        if (showModal) {
+          const videoElem = document.querySelector('#barcode-reader video');
+          if (!videoElem) {
+            setError('No se pudo inicializar el video. Reintenta, cambia de cámara o revisa permisos.');
+            stopScanning();
+          }
+        }
+      }, 4000);
 
       // Intentar detectar soporte de linterna
       try {
@@ -155,6 +171,7 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
         isInitializedRef.current = false;
         setIsScanning(false);
         setTorchOn(false);
+        setShowModal(false);
       } catch (err) {
         console.error(err);
       }
@@ -189,7 +206,40 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
           <p className="text-gray-600 text-lg">Usa la cámara o ingresa el código manualmente</p>
         </div>
 
-        <div id="barcode-reader" className={`mb-6 ${!isScanning ? 'hidden' : ''}`}></div>
+        {/* Modal overlay para la cámara */}
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="relative w-full max-w-md aspect-[9/16] bg-black rounded-xl shadow-2xl overflow-hidden flex items-center justify-center">
+              <div id="barcode-reader" className="w-full h-full"></div>
+              {/* Marco guía */}
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="w-72 h-44 border-4 border-blue-400/70 rounded-xl shadow-[0_0_15px_4px_rgba(59,130,246,0.4)]"></div>
+              </div>
+              {/* Botón cerrar */}
+              <button
+                type="button"
+                onClick={stopScanning}
+                className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white px-3 py-1 rounded-md text-sm font-medium"
+              >
+                Cerrar
+              </button>
+              {torchSupported && (
+                <button
+                  type="button"
+                  onClick={toggleTorch}
+                  className={`absolute bottom-4 right-4 px-4 py-2 rounded-md font-medium text-sm shadow ${
+                    torchOn ? 'bg-yellow-500 text-white' : 'bg-white/80 text-gray-800'
+                  }`}
+                >
+                  {torchOn ? 'Linterna ✔' : 'Linterna'}
+                </button>
+              )}
+            </div>
+            <p className="mt-4 text-sm text-gray-200 text-center max-w-sm leading-snug">
+              Alinea el código de barras dentro del marco. Mantén la mano firme y asegúrate de tener buena iluminación.
+            </p>
+          </div>
+        )}
 
         {error && (
           <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
@@ -263,18 +313,7 @@ export function BarcodeScanner({ onScan }: BarcodeScannerProps) {
           )}
         </button>
 
-        {isScanning && torchSupported && (
-          <button
-            type="button"
-            onClick={toggleTorch}
-            className={`w-full flex items-center justify-center gap-3 px-6 py-4 rounded-lg text-lg font-semibold transition-colors mb-8 shadow-md ${
-              torchOn ? 'bg-yellow-500 hover:bg-yellow-600 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-800'
-            }`}
-          >
-            {torchOn ? <FlashlightOff size={26} /> : <Flashlight size={26} />}
-            {torchOn ? 'Apagar Linterna' : 'Encender Linterna'}
-          </button>
-        )}
+        {/* El botón de linterna principal ya está dentro del modal; se elimina aquí */}
 
         <div className="relative mb-8">
           <div className="absolute inset-0 flex items-center">
