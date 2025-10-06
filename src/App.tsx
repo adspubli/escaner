@@ -1,119 +1,97 @@
 import { useState } from 'react';
-import { BarcodeScanner } from './components/BarcodeScanner';
-import { ProductList } from './components/ProductList';
-import { lookupBarcode } from './services/upcApi';
+import { Download, PackageOpen, BarChart3 } from 'lucide-react';
+import { ProductScanner } from './components/ProductScanner';
+import { ProductTable } from './components/ProductTable';
+import { ProductDetails } from './components/ProductDetails';
 import { exportToCSV } from './utils/csvExport';
-import { Product } from './types/product';
-import { Download, Barcode, Loader2 } from 'lucide-react';
+import { fetchProductData } from './services/productService';
+import type { Product } from './types/product';
 
 function App() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [scannedProducts, setScannedProducts] = useState<Product[]>([]);
+  const [currentProduct, setCurrentProduct] = useState<Product | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleScan = async (barcode: string) => {
-    setLoading(true);
-    setMessage(null);
-
+  const handleScan = async (upc: string) => {
+    setIsLoading(true);
     try {
-      const product = await lookupBarcode(barcode);
+      const product = await fetchProductData(upc);
 
-      if (product) {
-        setProducts((prev) => [product, ...prev]);
-        setMessage({ type: 'success', text: `Producto agregado: ${product.name}` });
+      if (!product) {
+        alert(`Producto con código ${upc} no encontrado. Verifica el código.`);
+        setCurrentProduct(null);
+        return;
+      }
+
+      setCurrentProduct(product);
+
+      const existingIndex = scannedProducts.findIndex(p => p.barcode === product.barcode);
+      if (existingIndex === -1) {
+        setScannedProducts([...scannedProducts, product]);
       } else {
-        setMessage({ type: 'error', text: 'No se encontró información del producto' });
+        alert(`El producto "${product.name}" ya está en el lote.`);
       }
     } catch (error) {
-      setMessage({ type: 'error', text: 'Error al buscar el producto. Intenta nuevamente.' });
+      alert('Error al buscar el producto. Intenta nuevamente.');
     } finally {
-      setLoading(false);
-      setTimeout(() => setMessage(null), 5000);
+      setIsLoading(false);
     }
   };
 
-  const handleRemoveProduct = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+  const handleRemoveProduct = (index: number) => {
+    setScannedProducts(scannedProducts.filter((_, i) => i !== index));
   };
 
-  const handleExportCSV = () => {
-    exportToCSV(products);
-  };
-
-  const handleClearAll = () => {
-    if (window.confirm('¿Estás seguro de que quieres eliminar todos los productos?')) {
-      setProducts([]);
-    }
+  const handleExport = () => {
+    if (scannedProducts.length === 0) return;
+    exportToCSV(scannedProducts);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="text-center mb-10">
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <Barcode size={56} className="text-blue-600" />
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Escáner de Códigos de Barras</h1>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-2 sm:p-4 md:p-8">
+      <div className="max-w-7xl mx-auto">
+        <header className="text-center mb-6 sm:mb-8">
+          <div className="flex items-center justify-center mb-3">
+            <BarChart3 className="w-8 h-8 sm:w-10 sm:h-10 text-orange-600 mr-2" />
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-800">
+              Analizador de Lotes
+            </h1>
           </div>
-          <p className="text-gray-600 text-xl">
-            Escanea productos y exporta la información a CSV
-          </p>
-        </div>
+          <p className="text-sm sm:text-base text-slate-600">Búsqueda rápida por UPC/EAN</p>
+        </header>
 
-        {/* Loading Indicator */}
-        {loading && (
-          <div className="fixed top-6 right-6 bg-white rounded-lg shadow-lg p-5 flex items-center gap-3 z-50">
-            <Loader2 className="animate-spin text-blue-600" size={32} />
-            <span className="font-bold text-gray-700 text-lg">Buscando producto...</span>
-          </div>
+        <ProductScanner
+          onScan={handleScan}
+          isLoading={isLoading}
+        />
+
+        {currentProduct && (
+          <ProductDetails product={currentProduct} />
         )}
 
-        {/* Message Alert */}
-        {message && (
-          <div
-            className={`fixed top-6 left-1/2 transform -translate-x-1/2 rounded-lg shadow-lg p-5 z-50 max-w-lg w-full mx-4 border-2 ${
-              message.type === 'success'
-                ? 'bg-green-50 border-green-300 text-green-800'
-                : 'bg-red-50 border-red-300 text-red-800'
-            }`}
-          >
-            <p className="font-bold text-lg">{message.text}</p>
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-lg p-4 sm:p-6 border border-slate-200">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center">
+              <PackageOpen className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600 mr-2" />
+              <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800">
+                Productos
+                <span className="text-orange-600 ml-1">({scannedProducts.length})</span>
+              </h2>
+            </div>
+            <button
+              onClick={handleExport}
+              disabled={scannedProducts.length === 0}
+              className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-amber-600 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg font-semibold hover:from-orange-600 hover:to-amber-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg w-full sm:w-auto justify-center active:scale-95"
+            >
+              <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-sm sm:text-base">Generar Excel</span>
+            </button>
           </div>
-        )}
 
-        {/* Main Content */}
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* Scanner Section */}
-          <BarcodeScanner onScan={handleScan} />
-
-          {/* Products Section */}
-          <div>
-            <ProductList products={products} onRemove={handleRemoveProduct} />
-
-            {/* Action Buttons */}
-            {products.length > 0 && (
-              <div className="mt-6 flex flex-col sm:flex-row gap-4">
-                <button
-                  onClick={handleExportCSV}
-                  className="flex-1 flex items-center justify-center gap-3 px-8 py-5 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xl font-bold transition-colors shadow-lg"
-                >
-                  <Download size={28} />
-                  Exportar a CSV
-                </button>
-                <button
-                  onClick={handleClearAll}
-                  className="sm:w-auto px-8 py-5 bg-gray-500 hover:bg-gray-600 text-white rounded-xl text-xl font-bold transition-colors shadow-lg"
-                >
-                  Limpiar Todo
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer Info */}
-        <div className="mt-12 text-center text-base text-gray-500">
-          <p>Los datos de productos se obtienen de UPC Item Database</p>
+          <ProductTable
+            products={scannedProducts}
+            onRemove={handleRemoveProduct}
+          />
         </div>
       </div>
     </div>
