@@ -50,34 +50,34 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Barcode size={40} className="text-blue-600" />
-            <h1 className="text-4xl font-bold text-gray-900">Escáner de Códigos de Barras</h1>
+        <div className="text-center mb-10">
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <Barcode size={56} className="text-blue-600" />
+            <h1 className="text-4xl md:text-5xl font-bold text-gray-900">Escáner de Códigos de Barras</h1>
           </div>
-          <p className="text-gray-600 text-lg">
+          <p className="text-gray-600 text-xl">
             Escanea productos y exporta la información a CSV
           </p>
         </div>
 
         {/* Loading Indicator */}
         {loading && (
-          <div className="fixed top-4 right-4 bg-white rounded-lg shadow-lg p-4 flex items-center gap-3 z-50">
-            <Loader2 className="animate-spin text-blue-600" size={24} />
-            <span className="font-medium text-gray-700">Buscando producto...</span>
+          <div className="fixed top-6 right-6 bg-white rounded-lg shadow-lg p-5 flex items-center gap-3 z-50">
+            <Loader2 className="animate-spin text-blue-600" size={32} />
+            <span className="font-bold text-gray-700 text-lg">Buscando producto...</span>
           </div>
         )}
 
         {/* Message Alert */}
         {message && (
           <div
-            className={`fixed top-4 left-1/2 transform -translate-x-1/2 rounded-lg shadow-lg p-4 z-50 max-w-md w-full mx-4 ${
+            className={`fixed top-6 left-1/2 transform -translate-x-1/2 rounded-lg shadow-lg p-5 z-50 max-w-lg w-full mx-4 border-2 ${
               message.type === 'success'
-                ? 'bg-green-50 border border-green-200 text-green-800'
-                : 'bg-red-50 border border-red-200 text-red-800'
+                ? 'bg-green-50 border-green-300 text-green-800'
+                : 'bg-red-50 border-red-300 text-red-800'
             }`}
           >
-            <p className="font-medium">{message.text}</p>
+            <p className="font-bold text-lg">{message.text}</p>
           </div>
         )}
 
@@ -92,17 +92,17 @@ function App() {
 
             {/* Action Buttons */}
             {products.length > 0 && (
-              <div className="mt-4 flex flex-col sm:flex-row gap-3">
+              <div className="mt-6 flex flex-col sm:flex-row gap-4">
                 <button
                   onClick={handleExportCSV}
-                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors shadow-md"
+                  className="flex-1 flex items-center justify-center gap-3 px-8 py-5 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xl font-bold transition-colors shadow-lg"
                 >
-                  <Download size={20} />
+                  <Download size={28} />
                   Exportar a CSV
                 </button>
                 <button
                   onClick={handleClearAll}
-                  className="sm:w-auto px-6 py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors shadow-md"
+                  className="sm:w-auto px-8 py-5 bg-gray-500 hover:bg-gray-600 text-white rounded-xl text-xl font-bold transition-colors shadow-lg"
                 >
                   Limpiar Todo
                 </button>
@@ -112,7 +112,7 @@ function App() {
         </div>
 
         {/* Footer Info */}
-        <div className="mt-12 text-center text-sm text-gray-500">
+        <div className="mt-12 text-center text-base text-gray-500">
           <p>Los datos de productos se obtienen de UPC Item Database</p>
         </div>
       </div>
